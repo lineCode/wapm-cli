@@ -1,11 +1,9 @@
 use crate::data::manifest::{Manifest, MANIFEST_FILE_NAME};
 use crate::dataflow::added_packages::AddedPackages;
-use crate::dataflow::{PackageKey, WapmPackageKey};
-use std::borrow::Cow;
+use crate::dataflow::PackageKey;
 use std::collections::hash_set::HashSet;
 use std::fs;
 use std::path::Path;
-use toml::Value;
 
 #[derive(Clone, Debug, Fail)]
 pub enum Error {
@@ -13,8 +11,6 @@ pub enum Error {
     ManifestTomlParseError(String),
     #[fail(display = "Could not parse manifest because {}.", _0)]
     IoError(String),
-    #[fail(display = "Dependency version must be a string. Package name: {}.", _0)]
-    DependencyVersionMustBeString(String),
 }
 
 /// A ternary for a manifest: Some, None, Error.
@@ -61,24 +57,10 @@ impl<'a> ManifestPackages<'a> {
         manifest: &'a Manifest,
         added_packages: AddedPackages<'a>,
     ) -> Result<Self, Error> {
-        let mut packages = if let Manifest {
-            dependencies: Some(ref dependencies),
-            ..
-        } = manifest
-        {
-            dependencies
-                .iter()
-                .map(|(name, value)| match value {
-                    Value::String(ref version) => Ok(PackageKey::WapmPackage(WapmPackageKey {
-                        name: Cow::Borrowed(name),
-                        version: Cow::Borrowed(version),
-                    })),
-                    _ => Err(Error::DependencyVersionMustBeString(name.to_string())),
-                })
-                .collect::<Result<HashSet<PackageKey>, Error>>()
-        } else {
-            Ok(HashSet::new())
-        }?;
+        let packages = manifest
+            .extract_package_keys()
+            .map_err(|e| Error::ManifestTomlParseError(e.to_string()))?;
+        let mut packages: HashSet<PackageKey> = packages.into_iter().collect();
 
         for added_package_key in added_packages.packages {
             packages.insert(added_package_key);

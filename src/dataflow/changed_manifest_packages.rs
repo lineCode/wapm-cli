@@ -46,7 +46,7 @@ mod test {
     #[test]
     fn one_added_package() {
         let mut manifest_package_keys = HashSet::new();
-        let package_key = PackageKey::new_registry_package("_/foo", "1.0.0");
+        let package_key = PackageKey::new_registry_package("_/foo", semver::Version::new(1, 0, 0));
         manifest_package_keys.insert(package_key);
         let manifest_data = ManifestPackages {
             packages: manifest_package_keys,
@@ -62,7 +62,7 @@ mod test {
     #[test]
     fn both_share_same_package() {
         let mut manifest_package_keys = HashSet::new();
-        let package_key = PackageKey::new_registry_package("_/foo", "1.0.0");
+        let package_key = PackageKey::new_registry_package("_/foo", semver::Version::new(1, 0, 0));
         manifest_package_keys.insert(package_key.clone());
         let manifest_data = ManifestPackages {
             packages: manifest_package_keys,
@@ -84,8 +84,10 @@ mod test {
     #[test]
     fn one_shared_and_one_added() {
         let mut manifest_package_keys = HashSet::new();
-        let package_key_1 = PackageKey::new_registry_package("_/foo", "1.0.0");
-        let package_key_2 = PackageKey::new_registry_package("_/bar", "2.0.0");
+        let package_key_1 =
+            PackageKey::new_registry_package("_/foo", semver::Version::new(1, 0, 0));
+        let package_key_2 =
+            PackageKey::new_registry_package("_/bar", semver::Version::new(2, 0, 0));
         manifest_package_keys.insert(package_key_1.clone());
         manifest_package_keys.insert(package_key_2.clone());
         // manifest has package_key_1 and package_key_2

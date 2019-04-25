@@ -8,6 +8,7 @@ use crate::dataflow::manifest_packages::{ManifestPackages, ManifestResult};
 use crate::dataflow::merged_lockfile_packages::MergedLockfilePackages;
 use crate::dataflow::resolved_packages::{RegistryResolver, ResolvedPackages};
 use crate::dataflow::retained_lockfile_packages::RetainedLockfilePackages;
+use semver::Version;
 use std::borrow::Cow;
 use std::collections::hash_set::HashSet;
 use std::fmt;
@@ -38,6 +39,8 @@ pub enum Error {
     ResolveError(resolved_packages::Error),
     #[fail(display = "Could not save manifest file because {}.", _0)]
     SaveError(String),
+    #[fail(display = "Could not install new packages. {}", _0)]
+    AddError(added_packages::Error),
 }
 
 /// A package key for a package in the wapm.io registry.
@@ -45,7 +48,7 @@ pub enum Error {
 #[derive(Clone, Debug, Eq, Hash, PartialOrd, PartialEq)]
 pub struct WapmPackageKey<'a> {
     pub name: Cow<'a, str>,
-    pub version: Cow<'a, str>,
+    pub version: Version,
 }
 
 impl<'a> fmt::Display for WapmPackageKey<'a> {
@@ -65,13 +68,13 @@ pub enum PackageKey<'a> {
 
 impl<'a> PackageKey<'a> {
     /// Convenience constructor for wapm.io registry keys.
-    fn new_registry_package<S>(name: S, version: S) -> Self
+    pub fn new_registry_package<S>(name: S, version: Version) -> Self
     where
         S: Into<Cow<'a, str>>,
     {
         PackageKey::WapmPackage(WapmPackageKey {
             name: name.into(),
-            version: version.into(),
+            version,
         })
     }
 }
@@ -193,7 +196,8 @@ pub fn update<P: AsRef<Path>>(
     directory: P,
 ) -> Result<(), Error> {
     let directory = directory.as_ref();
-    let added_packages = AddedPackages::new_from_str_pairs(added_packages);
+    let added_packages =
+        AddedPackages::new_from_str_pairs(added_packages).map_err(|e| Error::AddError(e))?;
     let manifest_result = ManifestResult::find_in_directory(&directory);
     match manifest_result {
         ManifestResult::NoManifest => update_with_no_manifest(directory, added_packages),
@@ -210,7 +214,7 @@ pub fn update_manifest(
 ) -> Result<(), Error> {
     let mut manifest = manifest;
     for (key, _, _) in installed_packages.packages.iter() {
-        manifest.add_dependency(key.name.as_ref(), key.version.as_ref());
+        manifest.add_dependency(key.name.as_ref(), &key.version);
     }
     manifest.save().map_err(|e| Error::SaveError(e.to_string()))
 }

@@ -2,6 +2,7 @@ use crate::dataflow::added_packages::AddedPackages;
 use crate::dataflow::{PackageKey, WapmPackageKey};
 use crate::graphql::execute_query;
 use graphql_client::*;
+use semver::Version;
 use std::collections::hash_set::HashSet;
 
 #[derive(GraphQLQuery)]
@@ -74,12 +75,12 @@ impl<'a> RegistryResolver {
 
 /// The Registry Resolver will resolve dependencies on a wapm.io server
 impl<'a> Resolve<'a> for RegistryResolver {
-    /// This gross function queries the GraphQL server. See the schema in `/graphql/queries/get_packages.grapql`
+    /// This gross function queries the GraphQL server. See the schema in `/graphql/queries/get_packages.graphql`
     fn sync_packages(
         added_packages: Vec<WapmPackageKey<'a>>,
     ) -> Result<Vec<(WapmPackageKey<'a>, String)>, Error> {
         let response = Self::get_response(added_packages.clone());
-        let results: Vec<(WapmPackageKey<'a>, String)> = response
+        let results: Vec<(String, Version, String)> = response
             .package
             .into_iter()
             .filter_map(|p| p)
@@ -99,8 +100,17 @@ impl<'a> Resolve<'a> for RegistryResolver {
                     .collect::<Vec<_>>()
             })
             .flatten()
-            // This is hack to allow for matching on the shorthand notation of global packages
-            // e.g. "_/sqlite" and "sqlite" are equivalent
+            .map(|(name, version, download_url)| {
+                Version::parse(&version)
+                    .map(|version| (name, version, download_url))
+                    .map_err(|e| Error::CouldNotResolvePackages(e.to_string()))
+            })
+            .collect::<Result<Vec<(_, _, _)>, Error>>()?;
+
+        // This is hack to allow for matching on the shorthand notation of global packages
+        // e.g. "_/sqlite" and "sqlite" are equivalent
+        let results = results
+            .into_iter()
             .filter_map(|(n, v, d)| {
                 let key = added_packages.iter().find(|k| match k.name.find('/') {
                     Some(_) => k.name == n && k.version == v,
@@ -109,6 +119,7 @@ impl<'a> Resolve<'a> for RegistryResolver {
                 key.map(|k| (k.clone(), d))
             })
             .collect();
+
         Ok(results)
     }
 }
@@ -140,7 +151,8 @@ mod test {
 
     #[test]
     fn test_resolve() {
-        let package_key_1 = PackageKey::new_registry_package("_/foo", "1.0.0");
+        let package_key_1 =
+            PackageKey::new_registry_package("_/foo", semver::Version::new(1, 0, 0));
         let mut packages_set = HashSet::new();
         packages_set.insert(package_key_1);
         let added_packages = AddedPackages {
@@ -153,9 +165,12 @@ mod test {
 
     #[test]
     fn test_resolve_missing_packages() {
-        let package_key_1 = PackageKey::new_registry_package("_/foo", "1.0.0");
-        let package_key_2 = PackageKey::new_registry_package("_/baz", "1.0.0");
-        let package_key_3 = PackageKey::new_registry_package("_/bar", "1.0.0");
+        let package_key_1 =
+            PackageKey::new_registry_package("_/foo", semver::Version::new(1, 0, 0));
+        let package_key_2 =
+            PackageKey::new_registry_package("_/baz", semver::Version::new(1, 0, 0));
+        let package_key_3 =
+            PackageKey::new_registry_package("_/bar", semver::Version::new(1, 0, 0));
         let mut packages_set = HashSet::new();
         packages_set.insert(package_key_1);
         packages_set.insert(package_key_2);
